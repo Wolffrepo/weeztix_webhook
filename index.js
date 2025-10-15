@@ -3,59 +3,55 @@ import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
-app.use(express.urlencoded({ extended: true })); // Form-Data akzeptieren
+app.use(express.urlencoded({ extended: true }));
 
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
+const WEEZTIX_API_URL = "https://shop.api.weeztix.com";
 
 app.post("/weeztix", async (req, res) => {
   try {
-    // Payload: Body oder Query-Parameter
-    const data = Object.keys(req.body).length ? req.body : req.query;
-    console.log("📩 Eingehende Payload:", JSON.stringify(data, null, 2));
-
-    // --- Event-Name ermitteln ---
-    const eventName =
-      data.event_name ||
-      data.event_title ||
-      data.event?.name ||
-      data.event?.title ||
-      data.name ||
-      "Unbekanntes Event";
-
-    // --- Anzahl gekaufter Tickets ermitteln ---
-    let bought = 0;
-    if (Array.isArray(data.tickets)) {
-      bought = data.tickets.reduce((sum, t) => sum + (t.quantity || 1), 0);
-    } else if (data.order?.tickets) {
-      bought = data.order.tickets.reduce((sum, t) => sum + (t.quantity || 1), 0);
-    } else if (data.quantity) {
-      bought = Number(data.quantity);
+    const eventId = req.body.event_id;
+    if (!eventId) {
+      console.error("Event-ID fehlt");
+      return res.status(400).send("Event-ID fehlt");
     }
 
-    // --- Gesamtanzahl aller Tickets ---
-    let total = "unbekannt";
-    if (data.order?.total_tickets) total = data.order.total_tickets;
-    else if (data.total_tickets_sold) total = data.total_tickets_sold;
-    else if (data.total_sold) total = data.total_sold;
-    else if (data.stats?.sold) total = data.stats.sold;
+    // API-Aufruf, um Bestelldaten zu erhalten
+    const apiRes = await fetch(`${WEEZTIX_API_URL}/events/${eventId}/orders`, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${process.env.WEEZTIX_API_KEY}`,
+      },
+    });
 
-    // --- Nachricht zusammenbauen ---
-    const message = `${bought} neue Tickets (gesamt ${total})`;
+    if (!apiRes.ok) {
+      console.error("Fehler beim Abrufen der Bestelldaten");
+      return res.status(500).send("Fehler beim Abrufen der Bestelldaten");
+    }
 
-    // --- Pushover senden ---
+    const orderData = await apiRes.json();
+    const ticketsBought = orderData.tickets.reduce((sum, ticket) => sum + ticket.quantity, 0);
+    const totalTickets = orderData.total_tickets;
+
+    const message = `${orderData.event_name} – ${ticketsBought} neue Tickets (insgesamt ${totalTickets})`;
+
+    // Pushover-Benachrichtigung senden
     const pushoverRes = await fetch("https://api.pushover.net/1/messages.json", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         token: PUSHOVER_TOKEN,
         user: PUSHOVER_USER,
-        title: `🎟️ ${eventName}`,
+        title: "🎟️ Ticketverkauf",
         message,
       }),
     });
 
-    if (!pushoverRes.ok) throw new Error("Pushover API Fehler");
+    if (!pushoverRes.ok) {
+      console.error("Fehler beim Senden der Pushover-Nachricht");
+      return res.status(500).send("Fehler beim Senden der Pushover-Nachricht");
+    }
 
     console.log("✅ Pushover gesendet:", message);
     res.status(200).send("OK");
