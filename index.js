@@ -43,7 +43,7 @@ app.post("/weeztix", async (req, res) => {
       "unbekannt";
 
     // 💬 Nachricht zusammenbauen
-    const message = `${eventName} – ${bought} neue Tickets (insgesamt ${total})`;
+    const message = `${bought} neue Tickets (gesamt ${total})`;
 
     // 📨 Pushover senden
     const pushoverRes = await fetch("https://api.pushover.net/1/messages.json", {
@@ -53,7 +53,7 @@ app.post("/weeztix", async (req, res) => {
         token: PUSHOVER_TOKEN,
         user: PUSHOVER_USER,
         message,
-        title: "🎟️ Ticketverkauf"
+        title: `🎟️ ${eventName}`
       })
     });
 
