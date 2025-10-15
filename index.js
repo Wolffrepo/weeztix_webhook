@@ -3,40 +3,55 @@ import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true })); // Formdata unterstützen
 
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
-const WEEZTIX_API_URL = "https://shop.api.weeztix.com";
+const WEEZTIX_API_KEY = process.env.WEEZTIX_API_KEY; // Dein API Key hier
+const WEEZTIX_API_URL = "https://api.weeztix.com"; // Endpoint prüfen
 
+// Webhook Route
 app.post("/weeztix", async (req, res) => {
   try {
-    const eventId = req.body.event_id;
+    const eventId = req.body.event_id || req.query.event_id;
     if (!eventId) {
-      console.error("Event-ID fehlt");
+      console.error("❌ Event-ID fehlt im Webhook");
       return res.status(400).send("Event-ID fehlt");
     }
 
-    // API-Aufruf, um Bestelldaten zu erhalten
+    // 1️⃣ Daten von Weeztix API abrufen
     const apiRes = await fetch(`${WEEZTIX_API_URL}/events/${eventId}/orders`, {
       method: "GET",
-      headers: {
-        "Authorization": `Bearer ${process.env.WEEZTIX_API_KEY}`,
-      },
+      headers: { "Authorization": `Bearer ${WEEZTIX_API_KEY}` },
     });
 
     if (!apiRes.ok) {
-      console.error("Fehler beim Abrufen der Bestelldaten");
-      return res.status(500).send("Fehler beim Abrufen der Bestelldaten");
+      console.error("❌ Fehler beim Abrufen der Bestelldaten");
+      return res.status(500).send("Fehler bei API-Abfrage");
     }
 
     const orderData = await apiRes.json();
-    const ticketsBought = orderData.tickets.reduce((sum, ticket) => sum + ticket.quantity, 0);
-    const totalTickets = orderData.total_tickets;
 
-    const message = `${orderData.event_name} – ${ticketsBought} neue Tickets (insgesamt ${totalTickets})`;
+    // 2️⃣ Tickets summieren
+    const ticketsBought = orderData.tickets?.reduce(
+      (sum, t) => sum + (t.quantity || 1),
+      0
+    ) || 0;
 
-    // Pushover-Benachrichtigung senden
+    const totalTickets =
+      orderData.total_tickets ||
+      orderData.total_sold ||
+      orderData.stats?.sold ||
+      "unbekannt";
+
+    const eventName =
+      orderData.event_name ||
+      orderData.event?.title ||
+      "Unbekanntes Event";
+
+    const message = `${eventName} – ${ticketsBought} neue Tickets (insgesamt ${totalTickets})`;
+
+    // 3️⃣ Pushover senden
     const pushoverRes = await fetch("https://api.pushover.net/1/messages.json", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -48,13 +63,11 @@ app.post("/weeztix", async (req, res) => {
       }),
     });
 
-    if (!pushoverRes.ok) {
-      console.error("Fehler beim Senden der Pushover-Nachricht");
-      return res.status(500).send("Fehler beim Senden der Pushover-Nachricht");
-    }
+    if (!pushoverRes.ok) throw new Error("Fehler beim Senden an Pushover");
 
-    console.log("✅ Pushover gesendet:", message);
+    console.log("✅ Nachricht gesendet:", message);
     res.status(200).send("OK");
+
   } catch (err) {
     console.error("❌ Fehler im Webhook:", err);
     res.status(500).send("Error");
