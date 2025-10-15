@@ -1,54 +1,47 @@
 import express from "express";
-import axios from "axios";
+import fetch from "node-fetch";
 
 const app = express();
 app.use(express.json());
 
-const WEEZTIX_API_KEY = process.env.WEEZTIX_API_KEY;
+// Pushover Variablen (in Render als Environment Variables setzen)
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
 
-app.post("/weeztix-webhook", async (req, res) => {
+// Webhook-Endpunkt, den Weeztix aufruft
+app.post("/weeztix", async (req, res) => {
   try {
     const data = req.body;
-    const eventGuid = data.event_guid;
-    const ticketsBought = data.tickets?.length || 1;
 
-    // 1️⃣ Eventdetails abrufen
-    const eventResponse = await axios.get(
-      `https://api.weeztix.com/event/${eventGuid}`,
-      { headers: { Authorization: `Bearer ${WEEZTIX_API_KEY}` } }
-    );
-    const eventName = eventResponse.data.name || "Unbekanntes Event";
+    // Daten aus Payload extrahieren
+    const eventName = data?.event?.name || "Unbekanntes Event";
+    const bought = data?.order?.tickets || 0;
+    const total = data?.order?.totalTicketsSold || "unbekannt";
 
-    // 2️⃣ Gesamtzahl der verkauften Tickets abrufen
-    const statsResponse = await axios.post(
-      `https://api.weeztix.com/event/${eventGuid}/salesstats`,
-      {},
-      { headers: { Authorization: `Bearer ${WEEZTIX_API_KEY}` } }
-    );
+    const message = `${eventName} – ${bought} neue Tickets (insgesamt ${total})`;
 
-    const totalTickets = statsResponse.data.ticket_types
-      ?.map((t) => t.sold)
-      ?.reduce((a, b) => a + b, 0) || 0;
-
-    // 3️⃣ Nachricht zusammenbauen
-    const message = `🎟️ ${eventName}\n➕ ${ticketsBought} neue Tickets\n📊 Insgesamt: ${totalTickets}`;
-
-    // 4️⃣ Pushover senden
-    await axios.post("https://api.pushover.net/1/messages.json", {
-      token: PUSHOVER_TOKEN,
-      user: PUSHOVER_USER,
-      title: "Weeztix Ticketverkauf",
-      message,
+    // Push über Pushover
+    const pushoverRes = await fetch("https://api.pushover.net/1/messages.json", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token: PUSHOVER_TOKEN,
+        user: PUSHOVER_USER,
+        message,
+        title: "🎟️ Ticketverkauf",
+      }),
     });
 
+    if (!pushoverRes.ok) throw new Error("Pushover API Fehler");
+
+    console.log("✅ Pushover Nachricht gesendet:", message);
     res.status(200).send("OK");
-  } catch (error) {
-    console.error("Fehler:", error.message);
-    res.status(500).send("Fehler beim Verarbeiten des Webhooks");
+  } catch (err) {
+    console.error("❌ Fehler im Webhook:", err);
+    res.status(500).send("Error");
   }
 });
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Webhook läuft auf Port ${port}`));
+// Render / Vercel / Railway Port Handling
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Webhook läuft auf Port ${PORT}`));
