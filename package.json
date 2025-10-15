@@ -1,7 +1,6 @@
 {
   "name": "weeztix-pushover-webhook",
   "version": "1.0.0",
-  "description": "Webhook für Weeztix Ticketverkäufe → Pushover",
   "main": "index.js",
   "type": "module",
   "scripts": {
