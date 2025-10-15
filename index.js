@@ -4,6 +4,7 @@ import fetch from "node-fetch";
 const app = express();
 app.use(express.json());
 
+// Pushover-Zugangsdaten aus Render-Umgebungsvariablen
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
 
@@ -17,6 +18,7 @@ app.post("/weeztix", async (req, res) => {
 
     const message = `${eventName} – ${bought} neue Tickets (insgesamt ${total})`;
 
+    // Pushover senden
     const pushoverRes = await fetch("https://api.pushover.net/1/messages.json", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -38,5 +40,6 @@ app.post("/weeztix", async (req, res) => {
   }
 });
 
+// Render PORT nutzen oder fallback auf 3000
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Webhook läuft auf Port ${PORT}`));
