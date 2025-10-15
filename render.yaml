@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: weeztix-pushover-webhook
+    env: node
+    region: frankfurt
+    plan: free
+    buildCommand: "npm install"
+    startCommand: "npm start"
+    envVars:
+      - key: WEEZTIX_API_KEY
+        sync: false
+      - key: PUSHOVER_TOKEN
+        sync: false
+      - key: PUSHOVER_USER
+        sync: false
